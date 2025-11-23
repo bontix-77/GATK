@@ -82,7 +82,7 @@ process GATK_JOINTGENOTYPING {
 }
 workflow {
 
-    file_bam = channel.fromPath("${projectDir}/data/sample_bams.txt").splitText()
+    file_bam = channel.fromPath("${projectDir}/prnp.txt").splitText()
 
     // Create index file for input BAM file
     SAMTOOLS_INDEX(file_bam)
