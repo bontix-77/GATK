@@ -108,13 +108,40 @@ workflow {
     // Step 1: Index the BAMs
     SAMTOOLS_INDEX(file_bam)
     
-    /* ------------------------------------------------------------------------------
-    EDUCATIONAL TAKEAWAY: Value Channels
-    ------------------------------------------------------------------------------
-    Reference genomes are large files used by every process. 
-    If you used a standard queue channel, the reference would be "consumed" 
-    by the first process and unavailable for the second.
+    // /* ------------------------------------------------------------------------------
+    // EDUCATIONAL TAKEAWAY: Value Channels
+    // ------------------------------------------------------------------------------
+    // Reference genomes are large files used by every process. 
+    // If you used a standard queue channel, the reference would be "consumed" 
+    // by the first process and unavailable for the second.
     
-    channel.value(...) ensures the file is available indefinitely for all 
-    parallel processes.
-    */
+    // channel.value(...) ensures the file is available indefinitely for all 
+    // parallel processes.
+    // */
+    reference = channel.value(tuple(file("${params.ref}/ref.fasta"), file("${params.ref}/ref.fasta.fai"), file("${params.ref}/ref.dict")))
+    intervals = channel.value(file("${params.ref}/intervals.bed"))
+    
+    // Step 2: Run HaplotypeCaller (Scatter)
+    // This runs in parallel for every item in the SAMTOOLS_INDEX output channel.
+    GATK_varian(SAMTOOLS_INDEX.out.bam_and_index, reference, intervals)
+
+    // ------------------------------------------------------------------------------
+    // EDUCATIONAL TAKEAWAY: The .collect() Operator
+    // ------------------------------------------------------------------------------
+    // Without .collect(): The next process would trigger every time ONE file 
+    // finishes (1 input = 1 output).
+    
+    // With .collect(): Nextflow blocks the channel until EVERY parallel instance 
+    // of GATK_varian is finished. It then emits the data as a single List 
+    // (List of all 50 samples, for example). 
+    
+    // This is essential for the Joint Genotyping step, which needs all files at once.
+    // */
+    all_vcf = GATK_varian.out.GVCF.collect()
+    all_idx = GATK_varian.out.idx.collect()
+    
+    cohort = channel.value("${params.cohort}")
+    
+    // Step 3: Joint Genotyping (Gather)
+    GATK_JOINTGENOTYPING(all_vcf, all_idx, reference, intervals, cohort)
+}
